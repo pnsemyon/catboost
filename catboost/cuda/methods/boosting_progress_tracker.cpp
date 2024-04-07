@@ -28,7 +28,7 @@ namespace NCatboostCuda {
                                                        bool hasWeights,
                                                        TMaybe<ui32> learnAndTestCheckSum,
                                                        ITrainingCallbacks* trainingCallbacks,
-                                                       const TMaybe<TCustomMetricDescriptor>& evalMetricDescriptor,
+                                                       const TMaybe<TCustomGpuMetricDescriptor>& evalMetricDescriptor,
                                                        const TMaybe<TCustomObjectiveDescriptor>& objectiveDescriptor)
         : CatboostOptions(catBoostOptions)
         , OutputOptions(outputFilesOptions)
@@ -111,6 +111,15 @@ namespace NCatboostCuda {
         ContinueTraining = TrainingCallbacks->IsContinueTraining(History);
 
         ++Iteration;
+    }
+
+    static inline double GetFinalErrorFromMetric(const IGpuMetric* metric, TMetricHolder&& holder) {
+        if (dynamic_cast<const TGpuCustomMetric*>(metric)) {
+            auto* customMetric = dynamic_cast<const TGpuCustomMetric*>(metric);
+            return customMetric->GetFinalError(std::move(holder));
+        } else {
+            return metric->GetCpuMetric().GetFinalError(std::move(holder));
+        }
     }
 
     void TBoostingProgressTracker::TrackLearnErrors(IMetricCalcer& metricCalcer) {
