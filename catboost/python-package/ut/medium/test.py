@@ -11315,31 +11315,31 @@ def test_custom_gpu_objective_metric():
         return
 
     class GPURMSEObjective(object):
-        
+
         def calc_ders_range_gpu(self, approxes, target, weights, value_output, der1_output, der2_output):
-            
+
             init_thread_idx = cuda.grid(1)
             if (init_thread_idx >= len(approxes)):
                 return
-            
+
             der1_curr = target[init_thread_idx] - approxes[init_thread_idx]
             der2_curr = 1.0
             val_curr = - der1_curr * der1_curr
-            
+
             if len(weights):
                 der1_curr *= weights[init_thread_idx]
                 der2_curr *= weights[init_thread_idx]
                 val_curr *= weights[init_thread_idx]
-            
+
             if len(value_output):
                 cuda.atomic.add(value_output, 0, val_curr)
 
             if len(der1_output):
                 der1_output[init_thread_idx] = der1_curr
-            
+
             if len(der2_output):
                 der2_output[init_thread_idx] = der2_curr
-    
+
     model1 = CatBoostRegressor(
         iterations=10,
         learning_rate=0.03,
@@ -11356,7 +11356,7 @@ def test_custom_gpu_objective_metric():
         has_time=True,
         boost_from_average=False
     )
-    
+
     model2 = CatBoostRegressor(
         iterations=10,
         learning_rate=0.03,
@@ -11373,20 +11373,20 @@ def test_custom_gpu_objective_metric():
         has_time=True,
         boost_from_average=False
     )
-    
+
     train_pool = Pool(data=TRAIN_FILE, column_description=CD_FILE)
     test_pool = Pool(data=TEST_FILE, column_description=CD_FILE)
 
     model1.fit(train_pool, eval_set=test_pool)
     model2.fit(train_pool, eval_set=test_pool)
-    
+
     pred1 = model1.predict(test_pool, prediction_type='RawFormulaVal')
     pred2 = model2.predict(test_pool, prediction_type='RawFormulaVal')
 
     assert np.allclose(pred1, pred2)
 
 def test_custom_gpu_eval_metric(task_type):
-    
+
     if (task_type == 'GPU'):
         from numba import cuda
 
@@ -11415,10 +11415,10 @@ def test_custom_gpu_eval_metric(task_type):
         def gpu_evaluate(self, approx, target, weight, output, output_weight):
             init_thread_idx = thread_idx = cuda.grid(1)
             n = target.size
-                
+
             output[init_thread_idx] = 0.0
             output_weight[init_thread_idx] = 0.0
-            
+
             while thread_idx < n:
                 e = math.exp(approx[thread_idx])
                 p = e / (1 + e)
@@ -11477,39 +11477,39 @@ def test_custom_gpu_eval_metric(task_type):
 @pytest.mark.parametrize('add_evaluate', [False, True])
 @pytest.mark.parametrize('add_gpu_evaluate', [False, True])
 def test_eval_metric_correct_selection(task_type, add_evaluate, add_gpu_evaluate):
-    
+
     if (task_type == 'GPU'):
         from numba import cuda
-    
+
     # Base class for metric mocks
     class EvaluationMetricMockBase(object):
-        
+
         def __init__(self):
             pass
-        
+
         def get_final_error(self, error, weight):
             return error / (weight + 1e-38)
 
         def is_max_optimal(self):
             return False
-        
+
     class EvaluationMetricMockEval(EvaluationMetricMockBase):
-        
+
         # The evaluation metric at each step should be 2.0, if this is called
         def evaluate(self, approxes, target, weight):
             return 2.0, 1.0
 
     class EvaluationMetricMockGpuEval(EvaluationMetricMockBase):
-        
+
         # The evaluation metric at each step should be 3.0, if this is called
         def gpu_evaluate(self, approx, target, weight, output, output_weight):
             init_thread_idx = cuda.grid(1)                
             output[init_thread_idx] = 3.0
             output_weight[init_thread_idx] = 1.0
-    
+
     class EvaluationMetricMockFull(EvaluationMetricMockGpuEval, EvaluationMetricMockEval):
         pass
-    
+
     if add_evaluate and add_gpu_evaluate:
         metric_mock = EvaluationMetricMockFull()
     elif add_evaluate:
@@ -11519,21 +11519,21 @@ def test_eval_metric_correct_selection(task_type, add_evaluate, add_gpu_evaluate
     else:
         metric_mock = EvaluationMetricMockBase()
     metric_mock_name = type(metric_mock).__name__
-        
+
     train_pool = Pool(data=TRAIN_FILE, column_description=CD_FILE)
     test_pool = Pool(data=TEST_FILE, column_description=CD_FILE)
 
     # We should fail, if we don't have any evaluation metric defined
     should_fail = not add_evaluate and not add_gpu_evaluate
-    
+
     # We also should fail, if only gpu_evaluate is defined for task_type==CPU
     should_fail |= not add_evaluate and task_type == 'CPU'
-    
+
     # If we don't have GPU evaluation method, 
     # or we try to train on CPU, we chould call "evaluate"
     # otherwise we should call "gpu_evaluate"
     should_call_eval = (task_type == 'CPU') or (not add_gpu_evaluate)
-    
+
     if should_fail:
         with pytest.raises(CatBoostError):
             model = CatBoostClassifier(
@@ -11549,12 +11549,11 @@ def test_eval_metric_correct_selection(task_type, add_evaluate, add_gpu_evaluate
             iterations=8
         )
         model.fit(train_pool, eval_set=test_pool)
-        
+
         if should_call_eval:
             assert np.allclose(model.evals_result_['validation'][metric_mock_name], 2.0)
         else:
             assert np.allclose(model.evals_result_['validation'][metric_mock_name], 3.0)
-    
 
 
 def test_fit_with_256_categories(task_type):
